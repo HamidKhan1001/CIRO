@@ -107,8 +107,8 @@ if __name__ == "__main__":
     
     # Simulate an offline incident
     offline_signal = {
-        "type": "social_media_post",
-        "text": "Heavy smoke from factory near industrial area, many cars stopped",
+        "type": "emergency_call",
+        "text": "Caller reports heavy smoke from factory near industrial area, traffic stopped",
         "timestamp": "2024-05-14T14:05:00Z",
         "location": "industrial_zone_peshawar"
     }

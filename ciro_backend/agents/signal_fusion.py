@@ -24,10 +24,10 @@ PROCESS:
    - Specificity of location (GPS vs. vague)
    - Language/urgency analysis (ALL CAPS = hype?)
    - Verification count (multiple people reporting same thing)
-   - Authority level (official sensor > social media)
+   - Authority level (official sensor > emergency call)
 
 3. Detect & flag contradictions:
-   - Example: Social media says "flooding", Sensor says "normal flow"
+   - Example: Traffic map says "flooding congestion", Sensor says "normal flow"
    - Action: Flag as contradiction, recommend manual verification
 
 4. Merge duplicates:
@@ -40,7 +40,7 @@ Expected structure:
   "primary_location": {"lat": float, "lon": float, "address": "string"},
   "fused_signals": [
     {
-      "source": "string",
+      "source": "emergency_call",
       "text": "string",
       "timestamp": "string",
       "credibility": float,

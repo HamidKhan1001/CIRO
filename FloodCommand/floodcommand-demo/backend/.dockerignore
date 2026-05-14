@@ -1,7 +1,0 @@
-.git
-__pycache__
-*.pyc
-.env
-.DS_Store
-victims.db
-gen-lang-client*.json
