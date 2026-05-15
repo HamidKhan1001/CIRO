@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Switch
+  View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Switch, Animated
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,33 +11,65 @@ import { getBaseUrl, setBaseUrl, checkHealth } from '../services/api';
 const StepSlider = ({ value, onChange, isDark }) => {
   const steps = ['Small', 'Medium', 'Large'];
   const activeIndex = steps.indexOf(value);
+  const [containerWidth, setContainerWidth] = useState(0);
+  
+  // Animation for the thumb position
+  const animatedValue = useRef(new Animated.Value(activeIndex)).current;
+
+  useEffect(() => {
+    Animated.spring(animatedValue, {
+      toValue: activeIndex,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 40
+    }).start();
+  }, [activeIndex]);
+
+  // Calculate thumb position based on container width
+  // Padding horizontal is 10, nodeWrapper width is 60, thumb width is 24
+  const thumbPosition = animatedValue.interpolate({
+    inputRange: [0, 1, 2],
+    outputRange: [
+      10 + 30 - 12, // Left (padding + half-wrapper - half-thumb)
+      containerWidth > 0 ? containerWidth / 2 - 12 : 0, // Center
+      containerWidth > 0 ? containerWidth - 10 - 30 - 12 : 0 // Right
+    ],
+  });
 
   return (
-    <View style={sliderStyles.container}>
+    <View 
+      style={sliderStyles.container}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
       {/* Track */}
       <View style={[sliderStyles.track, { backgroundColor: isDark ? Colors.border : '#E2E8F0' }]} />
       
-      {/* Nodes */}
+      {/* Animated Thumb */}
+      {containerWidth > 0 && (
+        <Animated.View 
+          style={[
+            sliderStyles.thumb,
+            { left: thumbPosition }
+          ]} 
+        />
+      )}
+      
+      {/* Interactive Labels */}
       <View style={sliderStyles.nodesContainer}>
         {steps.map((step, index) => {
           const isActive = index === activeIndex;
-          const isPast = index < activeIndex;
           return (
             <TouchableOpacity 
               key={step} 
               style={sliderStyles.nodeWrapper}
               onPress={() => onChange(step)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <View style={[
-                sliderStyles.node,
-                isActive && sliderStyles.nodeActive,
-                (!isActive && isPast) && sliderStyles.nodePast,
-                (!isActive && !isPast) && { backgroundColor: isDark ? Colors.surfaceLight : '#CBD5E1' }
-              ]} />
+              <View style={sliderStyles.nodePlaceholder} />
               <Text style={[
                 sliderStyles.nodeLabel,
-                { color: isActive ? Colors.primaryStart : (isDark ? Colors.textMuted : '#64748B') }
+                { color: isActive ? Colors.primaryStart : (isDark ? Colors.textMuted : '#64748B') },
+                isActive && { fontWeight: '800' }
               ]}>
                 {step}
               </Text>
@@ -187,13 +219,39 @@ export default function SettingsScreen({ navigation }) {
 }
 
 const sliderStyles = StyleSheet.create({
-  container: { width: '100%', paddingVertical: 10, paddingHorizontal: 10 },
-  track: { position: 'absolute', top: 22, left: 30, right: 30, height: 4, borderRadius: 2 },
-  nodesContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  nodeWrapper: { alignItems: 'center', width: 60 },
-  node: { width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: 'transparent' },
-  nodeActive: { backgroundColor: Colors.primaryStart, borderColor: Colors.primaryStart + '40', transform: [{scale: 1.2}] },
-  nodePast: { backgroundColor: Colors.primaryStart },
+  container: { width: '100%', paddingVertical: 10 },
+  track: { 
+    position: 'absolute', 
+    top: 22, 
+    left: 25, 
+    right: 25, 
+    height: 6, 
+    borderRadius: 3 
+  },
+  nodesContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingHorizontal: 10
+  },
+  nodeWrapper: { alignItems: 'center', width: 60, zIndex: 2 },
+  nodePlaceholder: { width: 24, height: 24 },
+  thumb: { 
+    position: 'absolute',
+    top: 13,
+    width: 24, 
+    height: 24, 
+    borderRadius: 12, 
+    backgroundColor: Colors.primaryStart,
+    borderWidth: 3,
+    borderColor: Colors.primaryStart + '40',
+    zIndex: 1,
+    shadowColor: Colors.primaryStart,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   nodeLabel: { marginTop: 12, fontSize: 12, fontWeight: '600' },
 });
 

@@ -53,3 +53,10 @@ dist/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Project artifacts
+progress.txt
+implementation_plan.md
+task.md
+walkthrough.md
+*.log
