@@ -41,9 +41,12 @@ async def serve_dashboard():
 
 @app.post("/orchestrate")
 async def orchestrate_crisis(request: OrchestrationRequest):
+    print(f"DEBUG: Received orchestration request with {len(request.signals)} signals")
     try:
         # 1. Run the AI Orchestration
+        print("DEBUG: Calling orchestrator.run_crisis_orchestration")
         result = orchestrator.run_crisis_orchestration(request.signals, request.resources)
+        print("DEBUG: Orchestrator call complete")
 
         # 2. Extract key data for the database
         classification = result.get("classification", {})
@@ -79,9 +82,12 @@ async def orchestrate_crisis(request: OrchestrationRequest):
                 (sig_id, incident_id, sig.get("source"), sig.get("text"))
             )
 
-        res_alloc = first_alloc.get("allocated_resources", {})
-        for res_type, qty in res_alloc.items():
-            if qty and qty > 0:
+        # Handle v3 allocation plan (List of {resource_type, quantity, ...})
+        alloc_list = allocation_plan.get("allocation_plan", [])
+        for item in alloc_list:
+            res_type = item.get("resource_type")
+            qty = item.get("quantity")
+            if res_type and qty and qty > 0:
                 cursor.execute(
                     "INSERT INTO resource_allocations (id, incident_id, resource_type, quantity) VALUES (?, ?, ?, ?)",
                     ("RES-" + os.urandom(4).hex(), incident_id, res_type, qty)
@@ -90,6 +96,8 @@ async def orchestrate_crisis(request: OrchestrationRequest):
         conn.commit()
         conn.close()
 
+        # Add incident_id to top level for convenience
+        result["incident_id"] = incident_id
         return result
 
     except Exception as e:
@@ -104,12 +112,19 @@ async def get_incidents():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM incidents ORDER BY created_at DESC")
-    incidents = [dict(row) for row in cursor.fetchall()]
-    for inc in incidents:
-        cursor.execute("SELECT resource_type, quantity FROM resource_allocations WHERE incident_id = ?", (inc["id"],))
-        inc["allocations"] = [dict(row) for row in cursor.fetchall()]
-        cursor.execute("SELECT source, content FROM signals WHERE incident_id = ?", (inc["id"],))
-        inc["signals"] = [dict(row) for row in cursor.fetchall()]
+    incidents = []
+    for row in cursor.fetchall():
+        inc = dict(row)
+        # Rename id to incident_id for client-side consistency
+        inc["incident_id"] = inc.pop("id")
+        
+        cursor.execute("SELECT resource_type, quantity FROM resource_allocations WHERE incident_id = ?", (inc["incident_id"],))
+        inc["allocations"] = [dict(r) for r in cursor.fetchall()]
+        
+        cursor.execute("SELECT source, content FROM signals WHERE incident_id = ?", (inc["incident_id"],))
+        inc["signals"] = [dict(r) for r in cursor.fetchall()]
+        incidents.append(inc)
+    
     conn.close()
     return incidents
 

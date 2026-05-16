@@ -1,63 +1,70 @@
 import json
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List, Optional
 from agents.base_agent import BaseAgent
 from utils.gemini_client import generate_json_response
+from utils.antigravity_utils import agent, create_execution_metadata
 
+@agent(
+    name="VERIFICATION_V3_ANTIGRAVITY",
+    description="Async monitoring for false alarms, classification updates, retractions",
+    version="3.0.0"
+)
 class VerificationAgent(BaseAgent):
     def get_system_prompt(self) -> str:
         return """
-You are the Verification & Recovery Agent for CIRO. Your job is to monitor 
-incoming data, detect if our classification was wrong, handle false alarms, 
-and learn from mistakes.
+Agent_Name: VERIFICATION_V3_ANTIGRAVITY
+Purpose: Async monitoring for false alarms, classification updates, retractions
+Input: initial_execution_data, new_signals (from streaming or polling)
 
-INPUT:
-- Ongoing crisis monitoring (new signals arriving)
-- Initial classification history
+Verification_Algorithm:
+  1. Compare new signals to original incident classification
+  2. Recalculate confidence using Signal Fusion logic
+  3. Update severity if new_severity differs by >1 level
+  4. Trigger retraction if:
+     - overall_confidence drops below 0.40 (false alarm threshold)
+     - No new signals in 30+ minutes (time decay, -1% per 5min)
+     - Contradictory evidence from official sources
+  5. Trigger escalation if:
+     - overall_confidence increases AND new_severity > original
+     - Cascading secondary crises detected
 
-PROCESS:
-1. Monitor for data that contradicts initial classification.
-2. Detect false positives (low confidence signals).
-3. Detect false negatives (signals we missed).
-4. Handle resource reallocation if confidence changes.
+Output Format:
+Return a JSON object with:
+- incident_id: string
+- initial_confidence: float
+- updated_confidence: float
+- classification_updated: bool
+- updated_crisis_type: string or null
+- confidence_trend: str ("INCREASING" | "STABLE" | "DECREASING")
+- retraction_needed: bool
+- retraction_message: string or null
+- escalation_needed: bool
+- escalation_reason: string or null
+- lessons_learned: List[str]
+- error: string or null
+- reason: string or null
 
-5. Output structured JSON ONLY. Do NOT wrap in markdown blocks like ```json.
-Expected structure:
-{
-  "incident_id": "string",
-  "verification_timestamp": "string",
-  "initial_classification": {"type": "string", "confidence": float},
-  "updated_classification": {"type": "string", "confidence": float},
-  "classification_change": {
-    "change_required": boolean,
-    "severity_change": "string",
-    "message_retraction_needed": boolean
-  },
-  "retraction_actions": [
-    {
-      "message_id": "string",
-      "retraction_message": "string",
-      "audience": "string"
-    }
-  ],
-  "lessons_learned": [
-    {
-      "lesson": "string",
-      "recommendation": "string"
-    }
-  ],
-  "next_actions": ["string"]
-}
+Do NOT wrap in markdown blocks.
 """
 
-    def process(self, initial_data: Dict[str, Any], new_signals: list) -> Dict[str, Any]:
-        input_data = {
+    def execute(self, initial_data: Dict[str, Any], new_signals: List[Dict[str, Any]], parent_execution_id: Optional[str] = None) -> Dict[str, Any]:
+        start_time = time.time()
+        input_payload = {
             "initial_data": initial_data,
             "new_signals": new_signals
         }
-        prompt = f"Verify the initial classification against new signals:\n{json.dumps(input_data, indent=2)}"
+        prompt = f"Verify the initial classification against new signals:\n{json.dumps(input_payload, indent=2)}\nParent Execution ID: {parent_execution_id}"
         response_text = generate_json_response(prompt, self.get_system_prompt())
+        
         try:
-            return json.loads(response_text)
+            result = json.loads(response_text)
         except json.JSONDecodeError:
-            print("Failed to decode JSON from Verification Agent. Returning raw text.")
-            return {"error": "Invalid JSON", "raw_response": response_text}
+            result = {"error": "Invalid JSON", "reason": response_text}
+            
+        result["execution_metadata"] = create_execution_metadata(
+            "VERIFICATION_V3", 
+            parent_execution_id, 
+            start_time
+        )
+        return result

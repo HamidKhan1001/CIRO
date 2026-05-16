@@ -1,65 +1,69 @@
 import json
-from typing import Any, Dict
+import time
+from typing import Any, Dict, Optional
 from agents.base_agent import BaseAgent
 from utils.gemini_client import generate_json_response
+from utils.antigravity_utils import agent, create_execution_metadata
 
+@agent(
+    name="ACTION_SIMULATOR_V3_ANTIGRAVITY",
+    description="Predict outcomes and side effects of resource allocation",
+    version="3.0.0"
+)
 class ActionSimulatorAgent(BaseAgent):
     def get_system_prompt(self) -> str:
         return """
-You are the Action Simulator Agent for CIRO. Your job is to predict the 
-impact of each response action BEFORE we commit resources.
+Agent_Name: ACTION_SIMULATOR_V3_ANTIGRAVITY
+Purpose: Predict outcomes and side effects of resource allocation
+Input: allocation_plan, severity_prediction
 
-INPUT:
-- Crisis classification + severity prediction
-- Resource allocation plan
+Simulation_Rules:
+  1. For each resource type: model arrival time (distance/speed)
+  2. Model effectiveness:
+     - Ambulances: -10% mortality per 50 ambulances per 1000 people
+     - Police: -5% panic per unit, +15% evacuation efficiency
+     - Fire trucks: -20% fire spread per truck
+     - Rescue teams: -30% trapped victims per team
+     - Water tankers: -15% severity per tanker
+  3. Estimate lives saved: (before_population - after_population) × mortality_rate
+  4. Identify side effects:
+     - Traffic congestion from evacuation
+     - Secondary injuries from panic
+     - Resource depletion for other areas
+  5. Calculate failure risks:
+     - Insufficient resources: probability = max(0, (need - available) / need)
+     - Route blocked: probability = 0.1 (traffic/debris)
+     - Communication failure: probability = 0.05
 
-PROCESS:
-1. For each action, simulate before/after state.
-2. Simulate cascade effects.
-3. Simulate unintended consequences.
+Output Format:
+Return a JSON object with:
+- incident_id: string
+- simulated_actions: List of {action_id, action_description, resource_deployment, expected_outcome, confidence}
+- before_state: {affected_population, severity}
+- after_state: {affected_population, severity}
+- impact_metrics: {lives_saved_estimate, response_time_reduction_minutes, coverage_improvement_percent}
+- side_effects: List of {effect_type, severity, description}
+- failure_risks: List of {risk_type, probability, mitigation}
+- overall_simulation_summary: string
+- error: string or null
+- reason: string or null
 
-4. Output structured JSON ONLY. Do NOT wrap in markdown blocks like ```json.
-Expected structure:
-{
-  "incident_id": "string",
-  "simulated_actions": [
-    {
-      "action_id": "string",
-      "action": "string",
-      "action_type": "string",
-      "before_state": {},
-      "after_state_estimated": {},
-      "impact_metrics": {
-        "lives_saved_estimate": "string",
-        "response_time_improvement": "string",
-        "side_effects": ["string"],
-        "unintended_consequences": ["string"]
-      },
-      "confidence": "string",
-      "recommendation": "string"
-    }
-  ],
-  "overall_simulation_summary": {
-    "expected_outcome": "string",
-    "confidence": "string",
-    "critical_success_factors": ["string"],
-    "failure_modes": [
-      {
-        "failure": "string",
-        "consequence": "string",
-        "mitigation": "string"
-      }
-    ],
-    "next_agent": "notifier_agent"
-  }
-}
+Do NOT wrap in markdown blocks.
 """
 
-    def process(self, allocation_data: Dict[str, Any]) -> Dict[str, Any]:
-        prompt = f"Simulate actions based on this allocation plan:\n{json.dumps(allocation_data, indent=2)}"
+    def execute(self, input_data: Dict[str, Any], parent_execution_id: Optional[str] = None) -> Dict[str, Any]:
+        start_time = time.time()
+        prompt = f"Simulate actions based on this allocation plan:\n{json.dumps(input_data, indent=2)}\nParent Execution ID: {parent_execution_id}"
         response_text = generate_json_response(prompt, self.get_system_prompt())
+        
         try:
-            return json.loads(response_text)
+            result = json.loads(response_text)
         except json.JSONDecodeError:
-            print("Failed to decode JSON from Action Simulator Agent. Returning raw text.")
-            return {"error": "Invalid JSON", "raw_response": response_text}
+            result = {"error": "Invalid JSON", "reason": response_text}
+            
+        result["execution_metadata"] = create_execution_metadata(
+            "ACTION_SIMULATOR_V3", 
+            parent_execution_id, 
+            start_time
+        )
+        return result

@@ -1,81 +1,130 @@
-// CIRO API Service - Connects to the FastAPI backend
-// Change this to your backend's IP address on the network
-const BASE_URL = 'http://192.168.1.100:8000';
+import axios from 'axios';
+import { dbService } from './database';
+import { v4 as uuidv4 } from 'uuid';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/**
- * Set the base URL dynamically (useful when configuring from settings)
- */
-let currentBaseUrl = BASE_URL;
+const DEFAULT_BASE_URL = 'http://localhost:8000';
 
-export function setBaseUrl(url) {
-  currentBaseUrl = url;
-}
-
-export function getBaseUrl() {
-  return currentBaseUrl;
-}
-
-/**
- * Check if backend is reachable
- */
-export async function checkHealth() {
-  try {
-    const response = await fetch(`${currentBaseUrl}/`, { 
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+class APIClient {
+  constructor() {
+    this.client = axios.create({
+      timeout: 10000,
     });
-    const data = await response.json();
-    return { connected: true, data };
-  } catch (error) {
-    return { connected: false, error: error.message };
+    this.baseUrl = DEFAULT_BASE_URL;
+    this.init();
+  }
+
+  async init() {
+    const savedUrl = await AsyncStorage.getItem('backend_url');
+    if (savedUrl) {
+      this.baseUrl = savedUrl;
+    }
+  }
+
+  setBaseUrl(url) {
+    this.baseUrl = url;
+    AsyncStorage.setItem('backend_url', url);
+  }
+
+  async request(method, endpoint, data = null) {
+    try {
+      const response = await this.client({
+        method,
+        url: `${this.baseUrl}${endpoint}`,
+        data,
+      });
+      return response.data;
+    } catch (error) {
+      console.warn(`API Error (${endpoint}):`, error.message);
+      throw error;
+    }
+  }
+
+  async submitCrisis(report) {
+    const syncId = uuidv4();
+    
+    // Align with backend OrchestrationRequest schema
+    const payload = {
+      signals: [
+        {
+          source: 'mobile_app',
+          text: `${report.crisis_type} report: ${report.description}. Location: ${report.location?.address}`,
+          location: report.location,
+          timestamp: Date.now()
+        }
+      ],
+      resources: {
+        ambulances: 20,
+        police_units: 15,
+        fire_trucks: 10,
+        rescue_teams: 5
+      }
+    };
+
+    try {
+      // Try online first
+      const result = await this.request('POST', '/orchestrate', payload);
+      
+      // Extract incident_id from nested classification or top level
+      const incidentId = result.classification?.incident_id || result.incident_id;
+      
+      // Save result locally as well
+      if (incidentId) {
+        const classification = result.classification || {};
+        await dbService.addIncident({
+          ...classification,
+          incident_id: incidentId,
+          affected_population: classification.affected_zone?.affected_population || 0,
+          sync_status: 'SYNCED',
+          status: 'ACTIVE'
+        });
+      }
+      return { ...result, incident_id: incidentId, source: 'online' };
+    } catch (error) {
+      // Offline fallback: Save to local DB and sync queue
+      const incidentId = `offline_${Date.now()}`;
+      const offlineIncident = {
+        incident_id: incidentId,
+        crisis_type: report.crisis_type || 'Unknown',
+        severity: report.severity || 'MEDIUM',
+        location_lat: report.location?.lat,
+        location_lon: report.location?.lon,
+        location_address: report.location?.address,
+        affected_population: report.affected_count || 0,
+        sync_status: 'PENDING',
+        created_at: Date.now(),
+        status: 'ACTIVE'
+      };
+
+      await dbService.addIncident(offlineIncident);
+      await dbService.addToSyncQueue(syncId, 'CREATE_INCIDENT', payload);
+
+      return { ...offlineIncident, source: 'offline', message: 'Report saved locally. Will sync when online.' };
+    }
+  }
+
+  async getIncidents() {
+    try {
+      const data = await this.request('GET', '/incidents?limit=50');
+      // Update local cache
+      for (const inc of data) {
+        await dbService.addIncident({ ...inc, sync_status: 'SYNCED' });
+      }
+      return data;
+    } catch (error) {
+      // Fallback to local DB
+      return await dbService.getIncidents();
+    }
+  }
+
+  async checkHealth() {
+    try {
+      await this.request('GET', '/');
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 }
 
-/**
- * Submit crisis signals to the CIRO orchestrator
- * POST /orchestrate
- */
-export async function submitCrisisReport(signals, resources = null) {
-  const defaultResources = {
-    ambulances: { total: 8, available: 8 },
-    police_units: { total: 12, available: 12 },
-    rescue_teams: { total: 2, available: 2 },
-    water_tankers: { total: 4, available: 4 },
-    fire_trucks: { total: 3, available: 3 },
-  };
-
-  const body = {
-    signals: signals,
-    resources: resources || defaultResources,
-  };
-
-  const response = await fetch(`${currentBaseUrl}/orchestrate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error(`Server error ${response.status}: ${errorData}`);
-  }
-
-  return await response.json();
-}
-
-/**
- * Get all past incidents
- * GET /incidents
- */
-export async function getIncidents() {
-  const response = await fetch(`${currentBaseUrl}/incidents`, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Server error ${response.status}`);
-  }
-
-  return await response.json();
-}
+export const api = new APIClient();

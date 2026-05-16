@@ -1,262 +1,229 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
+import { api } from '../services/api';
+import { LineChart } from 'react-native-chart-kit';
+import { useTheme } from '../context/ThemeContext';
 
-function SeverityBadge({ severity }) {
-  const color = {
-    CRITICAL: Colors.severityCritical, HIGH: Colors.severityHigh,
-    MEDIUM: Colors.severityMedium, LOW: Colors.severityLow,
-  }[severity?.toUpperCase()] || Colors.textMuted;
-  return (
-    <View style={[styles.badge, { backgroundColor: color + '20', borderColor: color + '40' }]}>
-      <View style={[styles.badgeDot, { backgroundColor: color }]} />
-      <Text style={[styles.badgeText, { color }]}>{severity?.toUpperCase() || 'UNKNOWN'}</Text>
+const { width } = Dimensions.get('window');
+
+const KPICard = ({ title, value, icon, color, trend, scaled }) => (
+  <View style={styles.kpiCard}>
+    <View style={[styles.kpiIcon, { backgroundColor: color + '20' }]}>
+      <Ionicons name={icon} size={scaled(20)} color={color} />
     </View>
-  );
-}
+    <Text style={[styles.kpiTitle, { fontSize: scaled(12) }]}>{title}</Text>
+    <Text style={[styles.kpiValue, { fontSize: scaled(20) }]}>{value}</Text>
+    {trend && (
+      <View style={styles.trendRow}>
+        <Ionicons name={trend.direction === 'up' ? 'arrow-up' : 'arrow-down'} size={scaled(12)} color={trend.direction === 'up' ? '#10B981' : '#EF4444'} />
+        <Text style={[styles.trendText, { color: trend.direction === 'up' ? '#10B981' : '#EF4444', fontSize: scaled(11) }]}>{trend.percent}%</Text>
+      </View>
+    )}
+  </View>
+);
 
-function AgentStep({ step, title, subtitle, status, delay }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+const AgentPipeline = ({ agents, scaled }) => {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pipelineScroll}>
+      {agents.map((agent, index) => (
+        <React.Fragment key={index}>
+          <View style={styles.agentNode}>
+            <View style={[styles.agentStatus, { backgroundColor: agent.status === 'done' ? '#10B981' : agent.status === 'processing' ? '#3B82F6' : '#374151' }]}>
+              {agent.status === 'done' ? <Ionicons name="checkmark" size={scaled(12)} color="#fff" /> : 
+               agent.status === 'processing' ? <Ionicons name="sync" size={scaled(12)} color="#fff" /> : null}
+            </View>
+            <Text style={[styles.agentName, { fontSize: scaled(10) }]}>{agent.name}</Text>
+            <Text style={[styles.agentTime, { fontSize: scaled(10) }]}>{agent.time || '--'}</Text>
+          </View>
+          {index < agents.length - 1 && (
+            <Ionicons name="chevron-forward" size={scaled(16)} color="#374151" style={styles.pipelineArrow} />
+          )}
+        </React.Fragment>
+      ))}
+    </ScrollView>
+  );
+};
+
+export default function DashboardScreen({ navigation }) {
+  const { currentScale, darkMode } = useTheme();
+  const [incidents, setIncidents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const scaled = (size) => size * currentScale;
+
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 500, delay, useNativeDriver: true }).start();
+    loadData();
   }, []);
-  return (
-    <Animated.View style={[styles.agentStep, { opacity: fadeAnim }]}>
-      <View style={[styles.stepNumber, status === 'done' && styles.stepDone]}>
-        {status === 'done' ? <Ionicons name="checkmark" size={14} color="#fff" /> : <Text style={styles.stepNumText}>{step}</Text>}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.stepTitle}>{title}</Text>
-        <Text style={styles.stepSub}>{subtitle}</Text>
-      </View>
-    </Animated.View>
-  );
-}
 
-export default function DashboardScreen({ route, navigation }) {
-  const crisisResult = route?.params?.crisisResult;
-  const signals = route?.params?.signals || [];
-  const [activeTab, setActiveTab] = useState('overview');
+  const loadData = async () => {
+    setLoading(true);
+    const data = await api.getIncidents();
+    setIncidents(data);
+    setLoading(false);
+  };
 
-  const classification = crisisResult?.classification || {};
-  const prediction = crisisResult?.prediction || {};
-  const allocation = crisisResult?.allocation || {};
-  const simulation = crisisResult?.simulation || {};
-  const signalFusion = crisisResult?.signal_fusion || {};
-  const notification = crisisResult?.notification || {};
-
-  const crisisType = classification?.crisis_type || classification?.type || 'Unknown Crisis';
-  const severity = classification?.severity || prediction?.severity_level || 'UNKNOWN';
-  const confidence = classification?.confidence?.overall_confidence || classification?.confidence || 'N/A';
-  const affectedZone = classification?.affected_zone?.zone_name || classification?.affected_zone?.address || 'Unknown';
-  const simulatedActions = simulation?.simulated_actions || [];
-  const overallSummary = simulation?.overall_simulation_summary || {};
-
-  if (!crisisResult) {
-    return (
-      <View style={styles.emptyContainer}>
-        <LinearGradient colors={[Colors.background, '#0F172A']} style={StyleSheet.absoluteFill} />
-        
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Dashboard</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.homeBtn}>
-            <Ionicons name="home" size={22} color={Colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.emptyContent}>
-          <Ionicons name="analytics" size={64} color={Colors.textMuted} />
-          <Text style={styles.emptyTitle}>No Active Crisis</Text>
-          <Text style={styles.emptySub}>Submit a crisis report to see AI analysis here.</Text>
-        </View>
-      </View>
-    );
-  }
+  const chartData = {
+    labels: ["4h", "8h", "12h", "16h", "20h", "24h"],
+    datasets: [{
+      data: [5, 12, 8, 15, 20, 18],
+      color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
+      strokeWidth: 2
+    }]
+  };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={[Colors.background, '#0F172A']} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: darkMode ? '#000000' : '#F3F4F6' }]}>
+      {darkMode && <LinearGradient colors={['#000000', '#0A0E1A']} style={StyleSheet.absoluteFill} />}
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Dashboard</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.homeBtn}>
-          <Ionicons name="home" size={22} color={Colors.textPrimary} />
+        <View>
+          <Text style={[styles.title, { color: darkMode ? '#F3F4F6' : '#111827', fontSize: scaled(24) }]}>CIRO Dashboard</Text>
+          <View style={styles.statusRow}>
+            <View style={styles.statusDot} />
+            <Text style={[styles.statusText, { fontSize: scaled(12) }]}>Live System Connected</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('MainTabs', { screen: 'Settings' })}>
+          <Ionicons name="settings-outline" size={scaled(24)} color={darkMode ? '#F3F4F6' : '#111827'} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Header Card */}
-        <LinearGradient colors={[Colors.danger + '20', Colors.background]} style={styles.headerCard}>
-          <View style={styles.headerRow}>
-            <View style={styles.typeIcon}><Ionicons name="warning" size={28} color={Colors.danger} /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.crisisType}>{crisisType}</Text>
-              <Text style={styles.crisisLoc}><Ionicons name="location" size={13} color={Colors.textMuted} /> {affectedZone}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* KPI Grid */}
+        <View style={styles.kpiGrid}>
+          <KPICard scaled={scaled} title="Active Crises" value="5" icon="warning-outline" color="#EF4444" trend={{ direction: 'up', percent: 20 }} />
+          <KPICard scaled={scaled} title="Affected People" value="5.2k" icon="people-outline" color="#3B82F6" />
+          <KPICard scaled={scaled} title="Response Time" value="7.7s" icon="time-outline" color="#10B981" />
+          <KPICard scaled={scaled} title="Accuracy" value="92%" icon="analytics-outline" color="#F59E0B" />
+        </View>
+
+        {/* Agent Pipeline */}
+        <Text style={[styles.sectionTitle, { color: darkMode ? '#F3F4F6' : '#111827', fontSize: scaled(16) }]}>Agent Orchestration Pipeline</Text>
+        <AgentPipeline scaled={scaled} agents={[
+          { name: 'Fusion', status: 'done', time: '1.2s' },
+          { name: 'Classifier', status: 'done', time: '1.6s' },
+          { name: 'Severity', status: 'done', time: '1.0s' },
+          { name: 'Resource', status: 'processing', time: '0.8s' },
+          { name: 'Simulator', status: 'pending' },
+          { name: 'Notifier', status: 'pending' },
+          { name: 'Verifier', status: 'pending' },
+        ]} />
+
+        {/* Timeline Chart */}
+        <Text style={[styles.sectionTitle, { color: darkMode ? '#F3F4F6' : '#111827', fontSize: scaled(16) }]}>Crisis Timeline (24h)</Text>
+        <View style={styles.chartContainer}>
+          <LineChart
+            data={chartData}
+            width={width - 32}
+            height={180}
+            chartConfig={{
+              backgroundColor: darkMode ? "#111827" : "#FFFFFF",
+              backgroundGradientFrom: darkMode ? "#111827" : "#FFFFFF",
+              backgroundGradientTo: darkMode ? "#111827" : "#FFFFFF",
+              decimalPlaces: 0,
+              color: (opacity = 1) => darkMode ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
+              labelColor: (opacity = 1) => darkMode ? `rgba(156, 163, 175, ${opacity})` : `rgba(107, 114, 128, ${opacity})`,
+              style: { borderRadius: 16 },
+              propsForDots: { r: "4", strokeWidth: "2", stroke: "#3B82F6" }
+            }}
+            bezier
+            style={styles.chart}
+          />
+        </View>
+
+        {/* Recent Incidents */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: darkMode ? '#F3F4F6' : '#111827', fontSize: scaled(16) }]}>Active Incidents</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Incidents')}>
+            <Text style={[styles.viewAll, { fontSize: scaled(14) }]}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        {incidents.slice(0, 3).map((inc, i) => (
+          <TouchableOpacity key={i} style={styles.incidentCard} onPress={() => navigation.navigate('MainTabs', { screen: 'Incidents', params: { incidentId: inc.incident_id } })}>
+            <View style={[styles.severityLine, { backgroundColor: inc.severity === 'CRITICAL' ? '#EF4444' : '#F59E0B' }]} />
+            <View style={styles.incidentContent}>
+              <View style={styles.incidentHeader}>
+                <Text style={[styles.incidentType, { color: darkMode ? '#F3F4F6' : '#111827', fontSize: scaled(16) }]}>{inc.crisis_type}</Text>
+                <Text style={[styles.incidentTime, { fontSize: scaled(12) }]}>13m ago</Text>
+              </View>
+              <Text style={[styles.incidentLoc, { fontSize: scaled(13) }]}>{inc.location_address || 'Downtown Zone A'}</Text>
+              <View style={styles.incidentFooter}>
+                <View style={styles.stat}>
+                  <Ionicons name="people" size={scaled(14)} color="#9CA3AF" />
+                  <Text style={[styles.statText, { fontSize: scaled(12) }]}>{inc.affected_population} affected</Text>
+                </View>
+                <View style={styles.statusBadge}>
+                  <Text style={[styles.statusBadgeText, { fontSize: scaled(10) }]}>ACTIVE</Text>
+                </View>
+              </View>
             </View>
-            <SeverityBadge severity={severity} />
-          </View>
-          <View style={styles.metricsRow}>
-            {[
-              { icon: 'analytics', label: 'Confidence', value: typeof confidence === 'number' ? `${(confidence * 100).toFixed(0)}%` : String(confidence), color: Colors.primaryStart },
-              { icon: 'pulse', label: 'Severity', value: severity, color: Colors.danger },
-            ].map((m, i) => (
-              <View key={i} style={styles.metricCard}>
-                <Ionicons name={m.icon} size={18} color={m.color} />
-                <Text style={styles.metricVal}>{m.value}</Text>
-                <Text style={styles.metricLbl}>{m.label}</Text>
-              </View>
-            ))}
-          </View>
-        </LinearGradient>
+          </TouchableOpacity>
+        ))}
 
-        {/* Tabs */}
-        <View style={styles.tabBar}>
-          {['overview', 'simulation', 'agents'].map(tab => (
-            <TouchableOpacity key={tab} style={[styles.tab, activeTab === tab && styles.tabActive]} onPress={() => setActiveTab(tab)}>
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={{ paddingHorizontal: 16 }}>
-          {activeTab === 'overview' && (
-            <>
-              <Text style={styles.secTitle}>Fused Signals ({(signalFusion?.fused_signals || signals).length})</Text>
-              {(signalFusion?.fused_signals || signals).map((sig, i) => (
-                <View key={i} style={styles.sigCard}>
-                  <View style={styles.sigHeader}>
-                    <Ionicons name={sig.source === 'weather_api' ? 'cloud' : sig.source === 'traffic_map' ? 'car' : 'chatbubble'} size={14} color={Colors.primaryStart} />
-                    <Text style={styles.sigSource}>{sig.source?.replace(/_/g, ' ').toUpperCase()}</Text>
-                  </View>
-                  <Text style={styles.sigText} numberOfLines={3}>{sig.text}</Text>
-                </View>
-              ))}
-            </>
-          )}
-
-          {activeTab === 'simulation' && (
-            <>
-              <Text style={styles.secTitle}>Simulated Actions</Text>
-              {simulatedActions.length > 0 ? simulatedActions.map((a, i) => (
-                <View key={i} style={styles.simCard}>
-                  <View style={styles.simHeader}>
-                    <LinearGradient colors={[Colors.success, Colors.accentStart]} style={styles.simIcon}>
-                      <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                    </LinearGradient>
-                    <Text style={styles.simAction}>{a.action || `Action ${i+1}`}</Text>
-                  </View>
-                  {a.before_state && (
-                    <View style={styles.stateRow}>
-                      <View style={[styles.stateBox, {borderColor: Colors.danger+'40'}]}>
-                        <Text style={[styles.stateLbl, {color: Colors.danger}]}>BEFORE</Text>
-                        <Text style={styles.stateTxt}>{typeof a.before_state === 'string' ? a.before_state : Object.entries(a.before_state).map(([k,v])=>`${k}: ${v}`).join('\n')}</Text>
-                      </View>
-                      <Ionicons name="arrow-forward" size={16} color={Colors.textMuted} />
-                      <View style={[styles.stateBox, {borderColor: Colors.success+'40'}]}>
-                        <Text style={[styles.stateLbl, {color: Colors.success}]}>AFTER</Text>
-                        <Text style={styles.stateTxt}>{typeof a.after_state_estimated === 'string' ? a.after_state_estimated : Object.entries(a.after_state_estimated||{}).map(([k,v])=>`${k}: ${v}`).join('\n')}</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )) : <View style={styles.card}><Text style={styles.noData}>Simulation data in agent trace</Text></View>}
-              {overallSummary.expected_outcome && (
-                <View style={styles.summaryCard}>
-                  <Ionicons name="trophy" size={22} color={Colors.success} />
-                  <Text style={styles.summaryTitle}>Expected Outcome</Text>
-                  <Text style={styles.summaryText}>{overallSummary.expected_outcome}</Text>
-                </View>
-              )}
-            </>
-          )}
-
-          {activeTab === 'agents' && (
-            <>
-              <Text style={styles.secTitle}>Agent Pipeline</Text>
-              {[
-                { step:1, title:'Signal Fusion Agent', subtitle:'Normalized signals', status: signalFusion ? 'done':'pending' },
-                { step:2, title:'Crisis Classifier Agent', subtitle:'Identified crisis type', status: classification ? 'done':'pending' },
-                { step:3, title:'Severity Prediction Agent', subtitle:'Estimated severity', status: prediction ? 'done':'pending' },
-                { step:4, title:'Resource Allocator Agent', subtitle:'Assigned resources', status: allocation ? 'done':'pending' },
-                { step:5, title:'Action Simulator Agent', subtitle:'Simulated outcomes', status: simulation ? 'done':'pending' },
-                { step:6, title:'Notifier Agent', subtitle:'Generated alerts', status: notification ? 'done':'pending' },
-              ].map((a,i)=> <AgentStep key={i} {...a} delay={i*200} />)}
-              <View style={styles.jsonBox}>
-                <Text style={styles.jsonTitle}>Raw Trace Output</Text>
-                <Text style={styles.jsonText}>{JSON.stringify(crisisResult, null, 2)?.substring(0, 1500)}</Text>
-              </View>
-            </>
-          )}
-        </View>
+        <TouchableOpacity style={styles.reportBtn} onPress={() => navigation.navigate('ReportCrisis')}>
+          <LinearGradient colors={['#3B82F6', '#1E40AF']} style={styles.reportGradient}>
+            <Ionicons name="add" size={scaled(24)} color="#fff" />
+            <Text style={[styles.reportText, { fontSize: scaled(18) }]}>Report New Crisis</Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 20, paddingBottom: 10,
+  container: { flex: 1 },
+  header: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingTop: 60, paddingHorizontal: 16, paddingBottom: 20 
   },
-  title: { fontSize: 26, fontWeight: '800', color: Colors.textPrimary },
-  homeBtn: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border,
+  title: { fontWeight: '800' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', marginRight: 8 },
+  statusText: { color: '#9CA3AF' },
+  iconBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
+  kpiCard: { width: (width - 44) / 2, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  kpiIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  kpiTitle: { color: '#9CA3AF', marginBottom: 4 },
+  kpiValue: { fontWeight: '700', color: '#F3F4F6' },
+  trendRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
+  trendText: { fontWeight: '600' },
+  sectionTitle: { fontWeight: '700', marginBottom: 16, marginTop: 12 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  viewAll: { color: '#3B82F6', fontWeight: '600' },
+  pipelineScroll: { paddingBottom: 20 },
+  agentNode: { alignItems: 'center', width: 70 },
+  agentStatus: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  agentName: { fontWeight: '600', color: '#9CA3AF' },
+  agentTime: { color: '#6B7280', marginTop: 2 },
+  pipelineArrow: { marginTop: 4, marginHorizontal: 4 },
+  chartContainer: { backgroundColor: '#111827', borderRadius: 20, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  chart: { marginVertical: 8, borderRadius: 16 },
+  incidentCard: { 
+    flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, 
+    marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' 
   },
-  emptyContainer: { flex: 1, backgroundColor: Colors.background },
-  emptyContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary, marginTop: 16 },
-  emptySub: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 8 },
-  headerCard: { margin: 16, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: Colors.danger + '20' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  typeIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: Colors.dangerSoft, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-  crisisType: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
-  crisisLoc: { fontSize: 13, color: Colors.textMuted, marginTop: 3 },
-  badge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1 },
-  badgeDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  metricsRow: { flexDirection: 'row', gap: 10 },
-  metricCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
-  metricVal: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginTop: 6 },
-  metricLbl: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, backgroundColor: Colors.surface, borderRadius: 14, padding: 4, marginBottom: 8 },
-  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-  tabActive: { backgroundColor: Colors.primaryStart + '20' },
-  tabText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
-  tabTextActive: { color: Colors.primaryStart },
-  secTitle: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginTop: 16, marginBottom: 10 },
-  card: { backgroundColor: Colors.surface, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: Colors.border },
-  noData: { fontSize: 13, color: Colors.textMuted, fontStyle: 'italic' },
-  sigCard: { backgroundColor: Colors.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: Colors.border },
-  sigHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  sigSource: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, marginLeft: 8 },
-  sigText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
-  simCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
-  simHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  simIcon: { width: 30, height: 30, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  simAction: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, flex: 1 },
-  stateRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  stateBox: { flex: 1, backgroundColor: Colors.card, borderRadius: 10, padding: 10, borderWidth: 1 },
-  stateLbl: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 4 },
-  stateTxt: { fontSize: 11, color: Colors.textSecondary, lineHeight: 16 },
-  summaryCard: { borderRadius: 16, padding: 20, marginTop: 12, alignItems: 'center', borderWidth: 1, borderColor: Colors.success + '30', backgroundColor: Colors.success + '08' },
-  summaryTitle: { fontSize: 16, fontWeight: '700', color: Colors.success, marginTop: 8 },
-  summaryText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 22 },
-  agentStep: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, backgroundColor: Colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.border },
-  stepNumber: { width: 32, height: 32, borderRadius: 10, backgroundColor: Colors.surfaceLight, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  stepDone: { backgroundColor: Colors.success },
-  stepNumText: { fontSize: 14, fontWeight: '700', color: Colors.textMuted },
-  stepTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  stepSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  jsonBox: { backgroundColor: Colors.card, borderRadius: 14, padding: 16, marginTop: 12, borderWidth: 1, borderColor: Colors.border },
-  jsonTitle: { fontSize: 12, fontWeight: '600', color: Colors.textMuted, marginBottom: 8 },
-  jsonText: { fontSize: 10, color: Colors.accentStart, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 15 },
+  severityLine: { width: 4 },
+  incidentContent: { flex: 1, padding: 16 },
+  incidentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  incidentType: { fontWeight: '700' },
+  incidentTime: { color: '#6B7280' },
+  incidentLoc: { color: '#9CA3AF', marginBottom: 12 },
+  incidentFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statText: { color: '#9CA3AF' },
+  statusBadge: { backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
+  statusBadgeText: { fontWeight: '700', color: '#10B981' },
+  reportBtn: { marginTop: 20, borderRadius: 16, overflow: 'hidden' },
+  reportGradient: { height: 56, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
+  reportText: { color: '#fff', fontWeight: '700' },
 });

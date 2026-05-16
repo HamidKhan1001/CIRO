@@ -1,291 +1,190 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Switch, Animated
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Switch, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
-import { getBaseUrl, setBaseUrl, checkHealth } from '../services/api';
-
-// Custom Slider Component
-const StepSlider = ({ value, onChange, isDark }) => {
-  const steps = ['Small', 'Medium', 'Large'];
-  const activeIndex = steps.indexOf(value);
-  const [containerWidth, setContainerWidth] = useState(0);
-  
-  // Animation for the thumb position
-  const animatedValue = useRef(new Animated.Value(activeIndex)).current;
-
-  useEffect(() => {
-    Animated.spring(animatedValue, {
-      toValue: activeIndex,
-      useNativeDriver: false,
-      friction: 8,
-      tension: 40
-    }).start();
-  }, [activeIndex]);
-
-  // Calculate thumb position based on container width
-  // Padding horizontal is 10, nodeWrapper width is 60, thumb width is 24
-  const thumbPosition = animatedValue.interpolate({
-    inputRange: [0, 1, 2],
-    outputRange: [
-      10 + 30 - 12, // Left (padding + half-wrapper - half-thumb)
-      containerWidth > 0 ? containerWidth / 2 - 12 : 0, // Center
-      containerWidth > 0 ? containerWidth - 10 - 30 - 12 : 0 // Right
-    ],
-  });
-
-  return (
-    <View 
-      style={sliderStyles.container}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-    >
-      {/* Track */}
-      <View style={[sliderStyles.track, { backgroundColor: isDark ? Colors.border : '#E2E8F0' }]} />
-      
-      {/* Animated Thumb */}
-      {containerWidth > 0 && (
-        <Animated.View 
-          style={[
-            sliderStyles.thumb,
-            { left: thumbPosition }
-          ]} 
-        />
-      )}
-      
-      {/* Interactive Labels */}
-      <View style={sliderStyles.nodesContainer}>
-        {steps.map((step, index) => {
-          const isActive = index === activeIndex;
-          return (
-            <TouchableOpacity 
-              key={step} 
-              style={sliderStyles.nodeWrapper}
-              onPress={() => onChange(step)}
-              activeOpacity={0.7}
-            >
-              <View style={sliderStyles.nodePlaceholder} />
-              <Text style={[
-                sliderStyles.nodeLabel,
-                { color: isActive ? Colors.primaryStart : (isDark ? Colors.textMuted : '#64748B') },
-                isActive && { fontWeight: '800' }
-              ]}>
-                {step}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 export default function SettingsScreen({ navigation }) {
-  const [url, setUrl] = useState(getBaseUrl());
-  const [status, setStatus] = useState(null);
-  const [testing, setTesting] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [fontSize, setFontSize] = useState('Medium');
+  const { darkMode, fontSizeIndex, updateDarkMode, updateFontSize, currentScale } = useTheme();
+  const [backendUrl, setBackendUrl] = useState('http://localhost:8000');
+  const [notifications, setNotifications] = useState(true);
+  const [autoSync, setAutoSync] = useState(true);
 
-  const testConnection = async () => {
-    setTesting(true);
-    setBaseUrl(url);
-    const result = await checkHealth();
-    setStatus(result.connected ? 'connected' : 'failed');
-    setTesting(false);
-    if (result.connected) {
-      Alert.alert('Connected!', 'Successfully connected to CIRO backend.');
-    } else {
-      Alert.alert('Connection Failed', `Could not reach ${url}\n\nError: ${result.error}`);
-    }
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    const url = await AsyncStorage.getItem('backend_url');
+    if (url) setBackendUrl(url);
   };
 
-  // Dynamic Theme Colors
-  const theme = {
-    bg: isDarkMode ? Colors.background : '#F8FAFC',
-    surface: isDarkMode ? Colors.surface : '#FFFFFF',
-    textPrimary: isDarkMode ? Colors.textPrimary : '#0F172A',
-    textSecondary: isDarkMode ? Colors.textSecondary : '#334155',
-    textMuted: isDarkMode ? Colors.textMuted : '#64748B',
-    border: isDarkMode ? Colors.border : '#E2E8F0',
-    headerGrad: isDarkMode ? [Colors.background, '#0F172A'] : ['#F8FAFC', '#E2E8F0'],
+  const handleSave = async () => {
+    await AsyncStorage.setItem('backend_url', backendUrl);
+    api.setBaseUrl(backendUrl);
+    Alert.alert('Success', 'Settings saved successfully.');
   };
 
-  // Dynamic Font Scaling
-  const getFontSize = (baseSize) => {
-    if (fontSize === 'Small') return baseSize - 2;
-    if (fontSize === 'Large') return baseSize + 2;
-    return baseSize;
+  const handleShowLogs = () => {
+    Alert.alert(
+      "Developer Logs",
+      "System: CIRO 3.0\nUptime: 1h 01m\nAgents: 7 Active\nMemory: 242MB\nLast Sync: 2m ago",
+      [{ text: "Close", style: "cancel" }]
+    );
   };
+
+  // Dynamic Styles based on Theme Context
+  const currentBgColor = darkMode ? '#000000' : '#F3F4F6';
+  const currentTextColor = darkMode ? '#F3F4F6' : '#111827';
+  const currentCardColor = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const currentBorderColor = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+  // Scaled Font Size Helper
+  const scaled = (size) => size * currentScale;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <LinearGradient colors={theme.headerGrad} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: currentBgColor }]}>
+      {darkMode && <LinearGradient colors={['#000000', '#0A0E1A']} style={StyleSheet.absoluteFill} />}
       
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.textPrimary, fontSize: getFontSize(26) }]}>Settings</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Home')} style={[styles.homeBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Ionicons name="home" size={22} color={theme.textPrimary} />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color={currentTextColor} />
         </TouchableOpacity>
+        <Text style={[styles.title, { color: currentTextColor, fontSize: scaled(20) }]}>Settings</Text>
+        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        
-        {/* Appearance Settings */}
-        <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: getFontSize(13) }]}>Appearance</Text>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Ionicons name={isDarkMode ? 'moon' : 'sunny'} size={20} color={Colors.primaryStart} />
-              <Text style={[styles.settingLabel, { color: theme.textPrimary, fontSize: getFontSize(15) }]}>Dark Theme</Text>
-            </View>
-            <Switch 
-              value={isDarkMode} 
-              onValueChange={setIsDarkMode}
-              trackColor={{ false: theme.border, true: Colors.primaryStart }}
-              thumbColor="#fff"
-            />
-          </View>
-          
-          <View style={[styles.settingRow, styles.borderTop, { borderTopColor: theme.border, flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <View style={[styles.settingLabelRow, { marginBottom: 16 }]}>
-              <Ionicons name="text" size={20} color={Colors.primaryStart} />
-              <Text style={[styles.settingLabel, { color: theme.textPrimary, fontSize: getFontSize(15) }]}>Font Size</Text>
-            </View>
-            
-            {/* Custom Slider */}
-            <StepSlider value={fontSize} onChange={setFontSize} isDark={isDarkMode} />
-            
-          </View>
-        </View>
-
-        <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: getFontSize(13) }]}>Backend Server URL</Text>
-        <View style={[styles.inputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={[styles.sectionTitle, { fontSize: scaled(13) }]}>Backend Connection</Text>
+        <View style={[styles.inputGroup, { backgroundColor: currentCardColor, borderColor: currentBorderColor }]}>
+          <Text style={[styles.label, { fontSize: scaled(12) }]}>Backend URL</Text>
           <TextInput
-            style={[styles.input, { color: theme.textPrimary, fontSize: getFontSize(15) }]}
-            value={url}
-            onChangeText={setUrl}
-            placeholder="http://192.168.1.100:8000"
-            placeholderTextColor={theme.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
+            style={[styles.input, { backgroundColor: currentCardColor, borderColor: currentBorderColor, color: currentTextColor, fontSize: scaled(14) }]}
+            value={backendUrl}
+            onChangeText={setBackendUrl}
+            placeholder="http://..."
+            placeholderTextColor="#6B7280"
           />
+          <TouchableOpacity style={styles.testBtn} onPress={handleSave}>
+            <Text style={[styles.testBtnText, { fontSize: scaled(14) }]}>Apply & Save</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={[styles.hint, { color: theme.textMuted, fontSize: getFontSize(12) }]}>
-          Enter the IP address of the machine running the CIRO backend.{'\n'}
-          Find it by running 'ipconfig' on the backend machine.
-        </Text>
 
-        <TouchableOpacity style={styles.testBtn} onPress={testConnection} disabled={testing}>
-          <LinearGradient colors={[Colors.primaryStart, Colors.primaryEnd]} style={styles.testBtnGrad}>
-            <Ionicons name={testing ? 'hourglass' : 'wifi'} size={18} color="#fff" />
-            <Text style={[styles.testBtnText, { fontSize: getFontSize(15) }]}>{testing ? 'Testing...' : 'Test Connection'}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {status && (
-          <View style={[styles.statusCard, { backgroundColor: status === 'connected' ? Colors.successSoft : Colors.dangerSoft }]}>
-            <Ionicons name={status === 'connected' ? 'checkmark-circle' : 'close-circle'} size={20} color={status === 'connected' ? Colors.success : Colors.danger} />
-            <Text style={[styles.statusText, { color: status === 'connected' ? Colors.success : Colors.danger, fontSize: getFontSize(14) }]}>
-              {status === 'connected' ? 'Backend is reachable!' : 'Connection failed'}
-            </Text>
+        <Text style={[styles.sectionTitle, { fontSize: scaled(13) }]}>Appearance</Text>
+        <View style={[styles.settingCard, { backgroundColor: currentCardColor, borderColor: currentBorderColor }]}>
+          <View style={styles.appearanceRow}>
+            <View>
+              <Text style={[styles.settingLabel, { color: currentTextColor, fontSize: scaled(16) }]}>Dark Theme</Text>
+              <Text style={[styles.settingSub, { fontSize: scaled(12) }]}>OLED optimized dashboard</Text>
+            </View>
+            <Switch value={darkMode} onValueChange={updateDarkMode} trackColor={{ true: '#3B82F6' }} />
           </View>
-        )}
 
-        {/* Info section */}
-        <View style={styles.infoSection}>
-          <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: getFontSize(13) }]}>About CIRO</Text>
-          <View style={[styles.infoCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.infoTitle, { color: theme.textPrimary, fontSize: getFontSize(16) }]}>Crisis Intelligence & Response Orchestrator</Text>
-            <Text style={[styles.infoText, { color: theme.textSecondary, fontSize: getFontSize(13) }]}>
-              An Agentic AI System powered by Google Gemini that ingests multi-source crisis signals,
-              detects emerging situations, generates coordinated response actions, and simulates
-              execution outcomes in real-time.
-            </Text>
-            <View style={styles.techStack}>
-              {['Google Gemini', 'Antigravity', 'FastAPI', 'React Native', 'Multi-Agent AI'].map((t, i) => (
-                <View key={i} style={styles.techChip}>
-                  <Text style={[styles.techText, { fontSize: getFontSize(12) }]}>{t}</Text>
-                </View>
-              ))}
+          <View style={styles.separator} />
+
+          <Text style={[styles.settingLabel, { color: currentTextColor, marginTop: 16, fontSize: scaled(16) }]}>Text Scale</Text>
+          <View style={styles.sliderContainer}>
+            <View style={[styles.sliderTrack, { backgroundColor: currentBorderColor }]} />
+            
+            <TouchableOpacity 
+              activeOpacity={1}
+              onPress={(e) => {
+                const x = e.nativeEvent.locationX;
+                if (x < 80) updateFontSize(0);
+                else if (x < 160) updateFontSize(1);
+                else updateFontSize(2);
+              }}
+              style={styles.sliderTouchArea}
+            >
+              <View style={[styles.sliderThumb, { left: fontSizeIndex === 0 ? '0%' : fontSizeIndex === 1 ? '50%' : '100%', marginLeft: fontSizeIndex === 0 ? 0 : fontSizeIndex === 1 ? -11 : -22 }]} />
+            </TouchableOpacity>
+
+            <View style={styles.sliderLabels}>
+              <Text style={[styles.sliderLabelText, fontSizeIndex === 0 && styles.activeLabel, { fontSize: scaled(10) }]}>Small</Text>
+              <Text style={[styles.sliderLabelText, fontSizeIndex === 1 && styles.activeLabel, { fontSize: scaled(10) }]}>Medium</Text>
+              <Text style={[styles.sliderLabelText, fontSizeIndex === 2 && styles.activeLabel, { fontSize: scaled(10) }]}>Large</Text>
             </View>
           </View>
         </View>
+
+        <Text style={[styles.sectionTitle, { fontSize: scaled(13) }]}>Preferences</Text>
+        <View style={[styles.settingRow, { backgroundColor: currentCardColor, borderColor: currentBorderColor }]}>
+          <View>
+            <Text style={[styles.settingLabel, { color: currentTextColor, fontSize: scaled(16) }]}>Push Notifications</Text>
+            <Text style={[styles.settingSub, { fontSize: scaled(12) }]}>Alerts for critical crises</Text>
+          </View>
+          <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: '#3B82F6' }} />
+        </View>
+
+        <View style={[styles.settingRow, { backgroundColor: currentCardColor, borderColor: currentBorderColor }]}>
+          <View>
+            <Text style={[styles.settingLabel, { color: currentTextColor, fontSize: scaled(16) }]}>Auto-Sync Data</Text>
+            <Text style={[styles.settingSub, { fontSize: scaled(12) }]}>Sync offline reports automatically</Text>
+          </View>
+          <Switch value={autoSync} onValueChange={setAutoSync} trackColor={{ true: '#3B82F6' }} />
+        </View>
+
+        <Text style={[styles.sectionTitle, { fontSize: scaled(13) }]}>Advanced</Text>
+        <View style={[styles.infoBox, { backgroundColor: currentCardColor, borderColor: currentBorderColor }]}>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { fontSize: scaled(14) }]}>App Version</Text>
+            <Text style={[styles.infoValue, { color: currentTextColor, fontSize: scaled(14) }]}>3.0.0</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { fontSize: scaled(14) }]}>Build Number</Text>
+            <Text style={[styles.infoValue, { color: currentTextColor, fontSize: scaled(14) }]}>42</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { fontSize: scaled(14) }]}>Device ID</Text>
+            <Text style={[styles.infoValue, { color: currentTextColor, fontSize: scaled(14) }]}>CIRO-77-X9</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.debugBtn} onPress={handleShowLogs}>
+          <Text style={[styles.debugBtnText, { fontSize: scaled(14) }]}>View Developer Logs</Text>
+          <Ionicons name="code" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
-const sliderStyles = StyleSheet.create({
-  container: { width: '100%', paddingVertical: 10 },
-  track: { 
-    position: 'absolute', 
-    top: 22, 
-    left: 25, 
-    right: 25, 
-    height: 6, 
-    borderRadius: 3 
-  },
-  nodesContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    paddingHorizontal: 10
-  },
-  nodeWrapper: { alignItems: 'center', width: 60, zIndex: 2 },
-  nodePlaceholder: { width: 24, height: 24 },
-  thumb: { 
-    position: 'absolute',
-    top: 13,
-    width: 24, 
-    height: 24, 
-    borderRadius: 12, 
-    backgroundColor: Colors.primaryStart,
-    borderWidth: 3,
-    borderColor: Colors.primaryStart + '40',
-    zIndex: 1,
-    shadowColor: Colors.primaryStart,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  nodeLabel: { marginTop: 12, fontSize: 12, fontWeight: '600' },
-});
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 20, paddingBottom: 10,
+  header: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingTop: 60, paddingHorizontal: 16, paddingBottom: 20 
   },
   title: { fontWeight: '800' },
-  homeBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1,
-  },
-  content: { padding: 20, paddingBottom: 100 },
-  sectionLabel: { fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, marginTop: 24 },
-  card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  borderTop: { borderTopWidth: 1 },
-  settingLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingLabel: { fontWeight: '500' },
-  inputRow: { borderRadius: 14, borderWidth: 1, paddingHorizontal: 14 },
-  input: { paddingVertical: 14 },
-  hint: { marginTop: 8, lineHeight: 18 },
-  testBtn: { marginTop: 16, borderRadius: 14, overflow: 'hidden' },
-  testBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
-  testBtnText: { fontWeight: '600', color: '#fff' },
-  statusCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, padding: 14, borderRadius: 12 },
-  statusText: { fontWeight: '600' },
-  infoSection: { marginTop: 32 },
-  infoCard: { borderRadius: 16, padding: 20, borderWidth: 1 },
-  infoTitle: { fontWeight: '700', marginBottom: 8 },
-  infoText: { lineHeight: 20 },
-  techStack: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  techChip: { backgroundColor: Colors.primaryStart + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  techText: { fontWeight: '600', color: Colors.primaryStart },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 60 },
+  sectionTitle: { fontWeight: '700', color: '#3B82F6', marginTop: 32, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1.5 },
+  inputGroup: { borderRadius: 20, padding: 20, borderWidth: 1 },
+  label: { color: '#9CA3AF', marginBottom: 8 },
+  input: { borderRadius: 12, padding: 12, borderWidth: 1 },
+  testBtn: { marginTop: 16, height: 44, backgroundColor: '#3B82F620', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#3B82F6' },
+  testBtnText: { color: '#3B82F6', fontWeight: '700' },
+  settingCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  appearanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  separator: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: 16 },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1 },
+  settingLabel: { fontWeight: '600' },
+  settingSub: { color: '#6B7280', marginTop: 2 },
+  sliderContainer: { marginTop: 12, height: 80, justifyContent: 'center' },
+  sliderTrack: { height: 2, width: '100%', position: 'absolute', top: 30 },
+  sliderTouchArea: { width: '100%', height: 60, position: 'absolute', top: 0 },
+  sliderThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#3B82F6', position: 'absolute', top: 20, borderWidth: 3, borderColor: '#000000' },
+  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 40 },
+  sliderLabelText: { fontWeight: '700', color: '#6B7280', textTransform: 'uppercase' },
+  activeLabel: { color: '#3B82F6' },
+  infoBox: { borderRadius: 20, padding: 20, gap: 16, borderWidth: 1 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  infoLabel: { color: '#9CA3AF' },
+  infoValue: { fontWeight: '600' },
+  debugBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 40, padding: 16 },
+  debugBtnText: { color: '#9CA3AF', fontWeight: '600' },
 });

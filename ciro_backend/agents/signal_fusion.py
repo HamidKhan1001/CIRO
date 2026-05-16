@@ -1,73 +1,67 @@
 import json
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, List, Optional
 from agents.base_agent import BaseAgent
 from utils.gemini_client import generate_json_response
+from utils.antigravity_utils import agent, create_execution_metadata
 
+@agent(
+    name="SIGNAL_FUSION_V3_ANTIGRAVITY",
+    description="Aggregate multi-source crisis signals",
+    version="3.0.0"
+)
 class SignalFusionAgent(BaseAgent):
     def get_system_prompt(self) -> str:
         return """
-You are the Signal Fusion Agent for CIRO. Your job is to integrate 
-disparate crisis signals into a unified picture.
+Agent_Name: SIGNAL_FUSION_V3_ANTIGRAVITY
+Purpose: Multi-source signal aggregation with credibility scoring
+Input_Schema:
+  signals:
+    type: List[Signal]
+    constraints: "1-20 signals, each with source/timestamp/location/text"
+  parent_execution_id:
+    type: Optional[str]
+    purpose: "Antigravity trace linking"
 
-INPUT: Raw signals from multiple sources (unstructured, noisy, possibly 
-contradictory)
+Algorithm: CREDIBILITY_SCORING_V2
+  1. Normalize all signals to {timestamp, location, source, text, metadata}
+  2. Validate location exists (else skip signal)
+  3. Score each signal's credibility:
+     - Base credibility by source (official_sensor=0.88, social_media=0.35, etc)
+     - Adjust: -5% per 10min age, -15% panic tone, +20% GPS, -30% verbal location
+     - Multiply by verification signals (if reported >5 times: +0.15)
+  4. Detect contradictions:
+     - |severity_A - severity_B| > 2 AND |confidence_A - confidence_B| > 0.30 → FLAG
+     - Compare locations: distance >1km AND same timestamp → FLAG
+  5. Deduplicate: Same location (500m) + same time (5min) → merge (keep highest credibility)
+  6. Fuse credibility: weighted_average(credibilities, weights=normalized_counts)
+  7. Output with full trace
 
-PROCESS:
-1. Normalize all signals:
-   - Extract: timestamp, location, source, text/data, credibility_indicator
-   - Geocode locations (lat/lon, address, zone name)
-   - Handle location ambiguity (report "near G-10" → cluster with other nearby reports)
+Output Format:
+Return a JSON object with:
+- incident_id: string
+- primary_location: {lat: float, lon: float, address: string, confidence: float}
+- fused_signals: list of {signal_id, source, text, credibility, weight, contribution}
+- contradictions: list of {signal_pairs, type, severity}
+- error: string or null
+- reason: string or null
 
-2. Score source credibility (0-100) based on source type:
-   - official_sensor:   credibility 0.85-0.95 (high accuracy, real-time)
-   - weather_api:       credibility 0.75-0.90 (official, may miss microclimates)
-   - traffic_map:       credibility 0.55-0.75 (crowd-sourced, noisy)
-   - emergency_call:    credibility 0.50-0.70 (real but panicked, vague location)
-   - social_media:      credibility 0.30-0.50 (unverified, hype language, biased)
-   Formula: credibility = 0.3*accuracy + 0.2*timeliness + 0.2*location_precision
-                          + 0.15*verification + 0.15*authority
-
-3. Detect & flag contradictions:
-   - Example: Social media says "major flooding", Official Sensor says "no water level rise"
-   - Example: Emergency call says "fire", Traffic map shows no unusual congestion
-   - Action: Flag as contradiction, recommend manual verification
-
-4. Merge duplicates:
-   - If two signals within 500m radius and 5 minutes apart, merge.
-
-5. Output structured JSON ONLY. Do NOT wrap in markdown blocks like ```json.
-Expected structure:
-{
-  "incident_id": "string",
-  "primary_location": {"lat": float, "lon": float, "address": "string"},
-  "fused_signals": [
-    {
-      "source": "social_media | official_sensor | weather_api | traffic_map | emergency_call",
-      "text": "string",
-      "timestamp": "string",
-      "credibility": float,
-      "reason": "string explaining why this credibility score was assigned"
-    }
-  ],
-  "contradictions": [
-    {
-      "signals": ["string", "string"],
-      "contradiction": "string",
-      "confidence": float,
-      "recommendation": "string"
-    }
-  ],
-  "high_priority_flags": ["string"],
-  "next_agent": "crisis_classifier_agent"
-}
+Do NOT wrap in markdown blocks.
 """
 
-    def process(self, input_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        prompt = f"Process these raw signals:\n{json.dumps(input_data, indent=2)}"
+    def execute(self, input_data: List[Dict[str, Any]], parent_execution_id: Optional[str] = None) -> Dict[str, Any]:
+        start_time = time.time()
+        prompt = f"Process these raw signals:\n{json.dumps(input_data, indent=2)}\nParent Execution ID: {parent_execution_id}"
         response_text = generate_json_response(prompt, self.get_system_prompt())
+        
         try:
-            return json.loads(response_text)
+            result = json.loads(response_text)
         except json.JSONDecodeError:
-            # Fallback if the LLM output is not perfect JSON
-            print("Failed to decode JSON from Signal Fusion Agent. Returning raw text.")
-            return {"error": "Invalid JSON", "raw_response": response_text}
+            result = {"error": "Invalid JSON", "reason": response_text}
+            
+        result["execution_metadata"] = create_execution_metadata(
+            "SIGNAL_FUSION_V3", 
+            parent_execution_id, 
+            start_time
+        )
+        return result

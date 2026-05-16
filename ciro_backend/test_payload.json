@@ -1,0 +1,17 @@
+{
+  "signals": [
+    {
+      "source": "emergency_call",
+      "text": "Flooding in downtown district",
+      "location": {"lat": 40.7128, "lon": -74.0060},
+      "timestamp": 1715857200000
+    }
+  ],
+  "resources": {
+    "ambulances": 8,
+    "police_units": 12,
+    "fire_trucks": 4,
+    "rescue_teams": 2,
+    "water_tankers": 2
+  }
+}
