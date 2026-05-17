@@ -74,6 +74,9 @@ class APIClient {
         await dbService.addIncident({
           ...classification,
           incident_id: incidentId,
+          location_lat: report.location?.lat,
+          location_lon: report.location?.lon,
+          location_address: report.location?.address,
           affected_population: classification.affected_zone?.affected_population || 0,
           sync_status: 'SYNCED',
           status: 'ACTIVE'

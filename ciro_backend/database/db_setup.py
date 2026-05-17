@@ -15,6 +15,9 @@ def init_db():
         severity TEXT,
         confidence REAL,
         affected_population INTEGER,
+        location_lat REAL,
+        location_lon REAL,
+        location_address TEXT,
         status TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -9,6 +9,9 @@ from database.db_setup import init_db, DB_PATH
 import sqlite3
 import json
 import os
+from fastapi import WebSocket, WebSocketDisconnect, status
+from websocket_manager import manager
+from utils.geohash_cluster import GeoHashCluster
 
 # Initialize Database
 init_db()
@@ -63,15 +66,24 @@ async def orchestrate_crisis(request: OrchestrationRequest):
 
         incident_id = classification.get("incident_id", "INC-" + os.urandom(4).hex())
 
+        # Try to get lat, lon, address from signals
+        first_sig_loc = request.signals[0].get("location", {}) if request.signals else {}
+        lat = first_sig_loc.get("lat", 0.0)
+        lon = first_sig_loc.get("lon", 0.0)
+        address = first_sig_loc.get("address", "")
+
         cursor.execute("""
-            INSERT OR REPLACE INTO incidents (id, type, severity, confidence, affected_population, status)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO incidents (id, type, severity, confidence, affected_population, location_lat, location_lon, location_address, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             incident_id,
             classification.get("crisis_type"),
             classification.get("severity"),
             classification.get("confidence", {}).get("overall_confidence"),
             classification.get("affected_zone", {}).get("affected_population"),
+            lat,
+            lon,
+            address,
             "ACTIVE"
         ))
 
@@ -117,6 +129,8 @@ async def get_incidents():
         inc = dict(row)
         # Rename id to incident_id for client-side consistency
         inc["incident_id"] = inc.pop("id")
+        # Align type to crisis_type
+        inc["crisis_type"] = inc.pop("type", "UNKNOWN")
         
         cursor.execute("SELECT resource_type, quantity FROM resource_allocations WHERE incident_id = ?", (inc["incident_id"],))
         inc["allocations"] = [dict(r) for r in cursor.fetchall()]
@@ -131,6 +145,76 @@ async def get_incidents():
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.websocket("/ws/incidents/{user_id}/{role}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str, role: str):
+    """
+    WebSocket endpoint for real-time incident updates
+    """
+    if role not in ['admin', 'responder', 'viewer']:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
+    await manager.connect(websocket, user_id, role)
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            if data.get('type') == 'subscribe_incident':
+                incident_id = data.get('incident_id')
+                if incident_id:
+                    if incident_id not in manager.incident_subscribers:
+                        manager.incident_subscribers[incident_id] = set()
+                    manager.incident_subscribers[incident_id].add(user_id)
+            elif data.get('type') == 'heartbeat':
+                await websocket.send_json({
+                    "type": "heartbeat_ack",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            elif data.get('type') == 'ping':
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket, role)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"WebSocket error: {e}")
+        await manager.disconnect(websocket, role)
+
+@app.get("/api/incidents/clustered")
+async def get_clustered_incidents(
+    min_lat: float,
+    min_lon: float,
+    max_lat: float,
+    max_lon: float,
+    zoom: int
+):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM incidents WHERE status = 'ACTIVE'")
+    
+    class DummyIncident:
+        def __init__(self, row):
+            self.id = row['id']
+            self.crisis_type = row['type']
+            self.severity = row['severity']
+            self.affected_population = row['affected_population']
+            self.lat = row['location_lat'] or 0.0
+            self.lon = row['location_lon'] or 0.0
+            
+            if self.severity == 'CRITICAL': self.severity_numeric = 5
+            elif self.severity == 'HIGH': self.severity_numeric = 4
+            elif self.severity == 'MEDIUM': self.severity_numeric = 3
+            elif self.severity == 'LOW': self.severity_numeric = 2
+            else: self.severity_numeric = 1
+            
+    incidents = [DummyIncident(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    precision = min(8, max(4, zoom - 3))
+    clusterer = GeoHashCluster(precision=precision)
+    return clusterer.cluster_incidents((min_lat, min_lon, max_lat, max_lon), incidents)
+
 
 if __name__ == "__main__":
     import uvicorn
