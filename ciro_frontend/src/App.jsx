@@ -4,6 +4,7 @@ import {
   Users, Timer, Target, ChevronRight, Zap, Info
 } from 'lucide-react';
 import { api } from './services/api';
+import { CrisisMap } from './components/CrisisMap/CrisisMap';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -265,6 +266,19 @@ function App() {
               { name: 'Notifier', status: 'pending' },
               { name: 'Verification', status: 'pending' },
             ]} />
+
+            <div className="bg-[#111827] border border-white/5 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                  <ShieldAlert className="w-5 h-5 text-blue-500" />
+                  Live Geolocation Incident Map
+                </h3>
+                <span className="text-xs font-bold text-green-500 px-2.5 py-1 bg-green-500/10 rounded-lg animate-pulse">GPU-ACCELERATED LIVE VIEW</span>
+              </div>
+              <div className="h-[450px] rounded-xl overflow-hidden border border-white/10 relative">
+                <CrisisMap incidents={incidents} />
+              </div>
+            </div>
 
             <div className="bg-[#111827] border border-white/5 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-6">

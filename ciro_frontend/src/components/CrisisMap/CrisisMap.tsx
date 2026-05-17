@@ -1,5 +1,6 @@
 import MapboxGL from 'mapbox-gl';
 import { useEffect, useRef, useState } from 'react';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapConfig {
   centerLat?: number;
@@ -8,15 +9,17 @@ interface MapConfig {
   maxBounds?: [[number, number], [number, number]];
   style?: string; // Mapbox dark theme style URL
   accessToken?: string; // From environment
+  incidents?: any[];
 }
 
 export const CrisisMap: React.FC<MapConfig> = ({
   centerLat = 33.7298,
-  centerLon = 74.3520,
+  centerLon = 73.0471, // Center on Islamabad/Rawalpindi
   zoomLevel = 11,
-  maxBounds = [[73.1, 33.5], [74.6, 34.0]], // Peshawar bounds
+  maxBounds = undefined, // Relax bounds to prevent viewport locking issues
   style = 'mapbox://styles/mapbox/dark-v11',
-  accessToken = (import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || ''
+  accessToken = (import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || '',
+  incidents = []
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<MapboxGL.Map | null>(null);
@@ -64,6 +67,42 @@ export const CrisisMap: React.FC<MapConfig> = ({
       if (map.current) map.current.remove();
     };
   }, [accessToken, style, centerLat, centerLon, zoomLevel, maxBounds]);
+
+  useEffect(() => {
+    if (!map.current || !isLoaded || !incidents) return;
+
+    const geojson = {
+      type: 'FeatureCollection' as const,
+      features: incidents.map((inc: any) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [inc.location_lon || 73.0471, inc.location_lat || 33.7298]
+        },
+        properties: {
+          incident_id: inc.incident_id,
+          crisis_type: inc.crisis_type || inc.type || 'UNKNOWN',
+          severity: inc.severity || 'UNKNOWN',
+          severity_numeric: inc.severity_numeric || (
+            inc.severity === 'CRITICAL' ? 5 :
+            inc.severity === 'HIGH' ? 4 :
+            inc.severity === 'MEDIUM' ? 3 :
+            inc.severity === 'LOW' ? 2 : 1
+          ),
+          affected_population: inc.affected_population || 0
+        }
+      }))
+    };
+
+    const incidentsSource = map.current.getSource('incidents') as MapboxGL.GeoJSONSource;
+    if (incidentsSource) {
+      incidentsSource.setData(geojson);
+    }
+    const heatmapSource = map.current.getSource('incidents-heatmap') as MapboxGL.GeoJSONSource;
+    if (heatmapSource) {
+      heatmapSource.setData(geojson);
+    }
+  }, [incidents, isLoaded]);
 
   const initializeMapLayers = () => {
     if (!map.current) return;
@@ -265,6 +304,37 @@ export const CrisisMap: React.FC<MapConfig> = ({
       }
     });
   };
+
+  if (!accessToken || accessToken === '') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          minHeight: '450px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px dashed rgba(255, 255, 255, 0.1)',
+          borderRadius: '12px',
+          padding: '24px',
+          textAlign: 'center',
+          color: '#9CA3AF'
+        }}
+      >
+        <div style={{ fontSize: '48px', marginBottom: '16px' }}>📍</div>
+        <h4 style={{ color: '#F3F4F6', fontWeight: 'bold', marginBottom: '8px' }}>Mapbox Token Missing</h4>
+        <p style={{ maxWidth: '400px', fontSize: '14px', lineHeight: '1.6' }}>
+          To enable live 3D rendering and incident heatmap mapping, please add a <code>.env</code> file under <code>ciro_frontend/</code> with:
+        </p>
+        <code style={{ display: 'block', background: 'rgba(0,0,0,0.5)', padding: '8px 16px', borderRadius: '6px', marginTop: '12px', color: '#3B82F6', fontFamily: 'monospace' }}>
+          VITE_MAPBOX_TOKEN=your_token_here
+        </code>
+      </div>
+    );
+  }
 
   return (
     <div
