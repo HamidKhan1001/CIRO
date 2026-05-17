@@ -3,12 +3,12 @@ import { dbService } from './database';
 import { v4 as uuidv4 } from 'uuid';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DEFAULT_BASE_URL = 'http://localhost:8000';
+const DEFAULT_BASE_URL = 'http://192.168.100.93:8000';
 
 class APIClient {
   constructor() {
     this.client = axios.create({
-      timeout: 10000,
+      timeout: 4000, // Fail fast (4s) so offline fallback triggers instantly
     });
     this.baseUrl = DEFAULT_BASE_URL;
     this.init();
