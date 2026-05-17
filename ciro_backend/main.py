@@ -180,6 +180,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, role: str):
         logging.getLogger(__name__).error(f"WebSocket error: {e}")
         await manager.disconnect(websocket, role)
 
+import time
+
+# Simple in-memory cache to replace Redis for hackathon
+cluster_cache = {}
+
 @app.get("/api/incidents/clustered")
 async def get_clustered_incidents(
     min_lat: float,
@@ -188,6 +193,15 @@ async def get_clustered_incidents(
     max_lon: float,
     zoom: int
 ):
+    cache_key = f"incidents:{min_lat}:{min_lon}:{max_lat}:{max_lon}:{zoom}"
+    
+    # Check cache first
+    now = time.time()
+    if cache_key in cluster_cache:
+        cached_data, expires_at = cluster_cache[cache_key]
+        if now < expires_at:
+            return cached_data
+            
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -213,7 +227,26 @@ async def get_clustered_incidents(
     
     precision = min(8, max(4, zoom - 3))
     clusterer = GeoHashCluster(precision=precision)
-    return clusterer.cluster_incidents((min_lat, min_lon, max_lat, max_lon), incidents)
+    result = clusterer.cluster_incidents((min_lat, min_lon, max_lat, max_lon), incidents)
+    
+    # Cache with TTL based on zoom level
+    ttl = 120
+    if zoom < 10:
+        ttl = 300 # 5 minutes
+    elif zoom <= 14:
+        ttl = 60  # 1 minute
+    else:
+        ttl = 30  # 30 seconds
+        
+    cluster_cache[cache_key] = (result, now + ttl)
+    
+    # Simple cache cleanup to prevent memory leaks during prolonged use
+    if len(cluster_cache) > 1000:
+        keys_to_delete = [k for k, v in cluster_cache.items() if v[1] < now]
+        for k in keys_to_delete:
+            del cluster_cache[k]
+            
+    return result
 
 
 if __name__ == "__main__":

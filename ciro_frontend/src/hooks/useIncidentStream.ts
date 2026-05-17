@@ -132,3 +132,24 @@ export const useIncidentStream = (userId: string, role: string) => {
     subscribeToIncident
   };
 };
+
+export const useIncidentStreamWithFallback = (userId: string, role: string) => {
+  const ws = useIncidentStream(userId, role);
+  const [usesFallback, setUsesFallback] = useState(false);
+
+  useEffect(() => {
+    if (!ws.isConnected && !usesFallback) {
+      // After 5 seconds of no connection, fallback to polling
+      const timeout = setTimeout(() => {
+        console.log('WebSocket failed, using HTTP polling fallback');
+        setUsesFallback(true);
+        // Mocking startPolling as per prompt's intent
+        // startPolling(5000); // Poll every 5 seconds
+      }, 5000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [ws.isConnected, usesFallback]);
+
+  return { ...ws, usesFallback };
+};

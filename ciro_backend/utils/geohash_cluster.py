@@ -97,6 +97,7 @@ class GeoHashCluster:
                 "incident_id": getattr(incident, 'id', ''),
                 "crisis_type": getattr(incident, 'crisis_type', ''),
                 "severity": getattr(incident, 'severity', ''),
+                "severity_numeric": getattr(incident, 'severity_numeric', 1),
                 "affected_population": getattr(incident, 'affected_population', 0)
             }
         }
