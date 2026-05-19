@@ -255,14 +255,16 @@ export const CIROChat = ({ userPosition }) => {
 
   return (
     <>
-      {/* Floating Chat Button */}
-      <div className="fixed bottom-6 right-6 z-[999] flex flex-col items-end gap-3">
+      {/* Floating Chat — fixed to viewport, safe for all screen sizes */}
+      <div className="fixed bottom-5 right-4 md:bottom-6 md:right-6 z-[999] flex flex-col items-end gap-3">
         {/* Unread badge & chat panel */}
         {isOpen && (
           <div
-            className="w-[380px] md:w-[420px] h-[600px] flex flex-col rounded-3xl overflow-hidden shadow-2xl shadow-black/50"
+            className="flex flex-col rounded-3xl overflow-hidden shadow-2xl shadow-black/60"
             style={{
-              background: 'rgba(10, 14, 26, 0.85)',
+              width: 'min(calc(100vw - 2rem), 420px)',
+              height: 'min(85vh, 600px)',
+              background: 'rgba(10, 14, 26, 0.92)',
               backdropFilter: 'blur(30px)',
               border: '1px solid rgba(255,255,255,0.1)',
               animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
