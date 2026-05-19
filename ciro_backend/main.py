@@ -249,6 +249,44 @@ async def get_clustered_incidents(
     return result
 
 
+class QuickReportRequest(BaseModel):
+    crisis_type: str
+    severity: str
+    description: str
+    location: Optional[Dict[str, Any]] = None
+
+@app.post("/report")
+async def quick_report(request: QuickReportRequest):
+    """
+    Direct citizen incident report — bypasses AI pipeline for instant submission.
+    Saves to DB immediately, visible in admin panel within 10 seconds.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    incident_id = "RPT-" + os.urandom(4).hex().upper()
+    lat  = request.location.get("lat", 0.0)  if request.location else 0.0
+    lng  = request.location.get("lng", 0.0)  if request.location else 0.0
+    address = f"GPS: {lat:.5f}, {lng:.5f}" if lat else "Unknown location"
+
+    cursor.execute("""
+        INSERT INTO incidents (id, type, severity, confidence, affected_population, location_lat, location_lon, location_address, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (incident_id, request.crisis_type, request.severity, 0.75, 0, lat, lng, address, "ACTIVE"))
+
+    sig_id = "SIG-" + os.urandom(4).hex().upper()
+    cursor.execute(
+        "INSERT INTO signals (id, incident_id, source, content, credibility) VALUES (?, ?, ?, ?, ?)",
+        (sig_id, incident_id, "citizen_report", request.description, 0.75)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {"incident_id": incident_id, "status": "ACTIVE", "message": "Incident reported and visible in Admin Command Center"}
+
+
+
 class ChatRequest(BaseModel):
     message: str
     location: Optional[Dict[str, Any]] = None

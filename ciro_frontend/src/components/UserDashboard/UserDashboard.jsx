@@ -4,7 +4,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   ShieldAlert, Navigation, PhoneCall, AlertTriangle, CheckCircle2,
-  Send, Loader2, X, MapPin, Radio, Flame, Droplets, Zap, Car, ThermometerSun
+  Send, Loader2, X, MapPin, Radio, Flame, Droplets, Zap, Car, ThermometerSun,
+  Mic, MicOff
 } from 'lucide-react';
 import { CIROChat } from '../CIROChat/CIROChat';
 
@@ -54,33 +55,66 @@ function ReportModal({ position, onClose, onSuccess }) {
   const [severity, setSeverity] = useState('HIGH');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  // Setup Speech Recognition for description field
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const r = new SR();
+    r.continuous = false;
+    r.interimResults = false;
+    r.lang = 'en-US';
+    r.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setDescription(prev => prev ? prev + ' ' + transcript : transcript);
+      setIsListening(false);
+    };
+    r.onerror = () => setIsListening(false);
+    r.onend = () => setIsListening(false);
+    recognitionRef.current = r;
+  }, []);
+
+  const toggleVoice = () => {
+    if (!recognitionRef.current) {
+      alert('Voice not supported in this browser. Try Chrome.');
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!description.trim()) { setError('Please describe the incident.'); return; }
     setIsSubmitting(true);
     setError(null);
 
-    const signal = {
-      source: 'citizen_report',
-      timestamp: new Date().toISOString(),
-      location: position
-        ? { lat: position.lat, lon: position.lng, address: `GPS: ${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}` }
-        : { lat: 33.6844, lon: 73.0479, address: 'Location unknown' },
-      text: `[USER REPORT] Type: ${crisisType} | Severity: ${severity} | Description: ${description}`,
-      metadata: { crisis_type: crisisType, severity, source_credibility: 0.75, reported_by: 'citizen_dashboard' },
-    };
-
     try {
-      const res = await fetch(`${API_BASE}/orchestrate`, {
+      // Use /report — fast direct DB write, always works
+      const res = await fetch(`${API_BASE}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signals: [signal], resources: DEFAULT_RESOURCES }),
+        body: JSON.stringify({
+          crisis_type: crisisType,
+          severity,
+          description: description.trim(),
+          location: position ? { lat: position.lat, lng: position.lng } : null,
+        }),
       });
-      if (!res.ok) throw new Error('Server error');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server error ${res.status}`);
+      }
       const data = await res.json();
       onSuccess(data.incident_id || 'submitted');
     } catch (e) {
-      setError('Failed to submit. Check your connection to the backend.');
+      setError(`Submission failed: ${e.message}. Is the backend running on port 8000?`);
     } finally {
       setIsSubmitting(false);
     }
@@ -143,16 +177,42 @@ function ReportModal({ position, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Description */}
+          {/* Description + Voice Input */}
           <div>
-            <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">Description</label>
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Describe what you see — location details, number of people affected, immediate hazards..."
-              rows={4}
-              className="w-full bg-white/[0.04] border border-white/10 focus:border-red-500/50 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none resize-none transition-all"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Description</label>
+              <button
+                type="button"
+                onClick={toggleVoice}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  isListening
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.4)]'
+                    : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white hover:border-white/20'
+                }`}
+              >
+                {isListening ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                {isListening ? 'Stop Recording' : '🎙️ Voice'}
+              </button>
+            </div>
+            <div className="relative">
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder={isListening ? '🎤 Listening... Speak your description now' : 'Describe what you see — location details, number of people affected, immediate hazards...'}
+                rows={4}
+                className={`w-full bg-white/[0.04] border focus:border-red-500/50 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none resize-none transition-all ${
+                  isListening ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.15)]' : 'border-white/10'
+                }`}
+              />
+              {isListening && (
+                <div className="absolute bottom-3 right-3 flex items-center gap-1">
+                  {[0,1,2,3].map(i => (
+                    <div key={i} className="w-0.5 bg-red-400 rounded-full animate-pulse"
+                      style={{ height: `${8 + i * 4}px`, animationDelay: `${i * 0.12}s` }} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* GPS status */}
