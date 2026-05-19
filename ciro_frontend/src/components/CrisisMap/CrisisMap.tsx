@@ -1,5 +1,6 @@
 import MapboxGL from 'mapbox-gl';
 import { useEffect, useRef, useState } from 'react';
+import { MapPin } from 'lucide-react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapConfig {
@@ -311,7 +312,7 @@ export const CrisisMap: React.FC<MapConfig> = ({
         style={{
           width: '100%',
           height: '100%',
-          minHeight: '450px',
+          minHeight: '100%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -324,7 +325,7 @@ export const CrisisMap: React.FC<MapConfig> = ({
           color: '#9CA3AF'
         }}
       >
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>📍</div>
+        <MapPin className="w-16 h-16 text-gray-500 mb-4" />
         <h4 style={{ color: '#F3F4F6', fontWeight: 'bold', marginBottom: '8px' }}>Mapbox Token Missing</h4>
         <p style={{ maxWidth: '400px', fontSize: '14px', lineHeight: '1.6' }}>
           To enable live 3D rendering and incident heatmap mapping, please add a <code>.env</code> file under <code>ciro_frontend/</code> with:
@@ -342,7 +343,7 @@ export const CrisisMap: React.FC<MapConfig> = ({
       style={{
         width: '100%',
         height: '100%',
-        minHeight: '500px',
+        minHeight: '100%',
         position: 'relative'
       }}
     >

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Bell, Settings, RefreshCcw, Activity, ShieldAlert, 
-  Users, Timer, Target, ChevronRight, Zap, Info
+  Users, Timer, Target, ChevronRight, Zap, Info, Menu, X
 } from 'lucide-react';
 import { api } from './services/api';
 import { CrisisMap } from './components/CrisisMap/CrisisMap';
+import { UserDashboard } from './components/UserDashboard/UserDashboard';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -30,7 +31,7 @@ ChartJS.register(
 );
 
 const KPICard = ({ title, value, icon: Icon, trend, color }) => (
-  <div className="bg-white/5 border border-white/10 rounded-2xl p-6 group">
+  <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 group hover:-translate-y-1 hover:bg-white/[0.08] hover:shadow-[0_0_30px_rgba(37,99,235,0.15)] transition-all duration-300">
     <div className="flex items-start justify-between">
       <div>
         <p className="text-gray-400 text-sm font-medium mb-1">{title}</p>
@@ -52,7 +53,7 @@ const KPICard = ({ title, value, icon: Icon, trend, color }) => (
 );
 
 const AgentPipeline = ({ agents }) => (
-  <div className="bg-[#111827] border border-white/5 rounded-2xl p-6">
+  <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all duration-500">
     <div className="flex items-center justify-between mb-8">
       <h3 className="text-lg font-bold flex items-center gap-2 text-white">
         <Zap className="w-5 h-5 text-blue-500" />
@@ -96,6 +97,8 @@ function App() {
   const [systemStatus, setSystemStatus] = useState('online');
   const [fontSize, setFontSize] = useState(1); // 0: Small, 1: Medium, 2: Large
   const [showSettings, setShowSettings] = useState(false);
+  const [currentView, setCurrentView] = useState('admin'); // 'admin' | 'user'
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -170,10 +173,13 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#0A0E1A', color: '#F3F4F6' }}>
+    <div className="min-h-screen text-[#F3F4F6] relative overflow-hidden" style={{ 
+      backgroundColor: '#0A0E1A',
+      backgroundImage: 'radial-gradient(circle at 15% 50%, rgba(37, 99, 235, 0.15), transparent 35%), radial-gradient(circle at 85% 30%, rgba(239, 68, 68, 0.08), transparent 35%)' 
+    }}>
       {/* Header */}
-      <header className="h-20 border-b border-white/5 bg-[#111827]/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-[1600px] h-full mx-auto px-8 flex items-center justify-between">
+      <header className="py-4 border-b border-white/5 bg-[#111827]/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto px-4 md:px-8 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
               <ShieldAlert className="w-6 h-6 text-white" />
@@ -187,7 +193,31 @@ function App() {
             </div>
           </div>
           
-          <div className="flex items-center gap-6">
+          {/* Mobile Hamburger Toggle */}
+          <button 
+            className="md:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-white"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          
+          <div className={`${isMobileMenuOpen ? 'flex flex-col mt-4 p-4 bg-[#111827]/90 backdrop-blur-xl rounded-2xl border border-white/10' : 'hidden'} md:flex flex-wrap items-center justify-center gap-4 md:gap-6 w-full md:w-auto`}>
+            {/* View Toggle */}
+            <div className="flex bg-[#1F2937] p-1 rounded-xl border border-white/10">
+              <button 
+                onClick={() => setCurrentView('admin')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${currentView === 'admin' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+              >
+                Admin
+              </button>
+              <button 
+                onClick={() => setCurrentView('user')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${currentView === 'user' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+              >
+                User Tracker
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/5">
               <Timer className="w-4 h-4 text-gray-400" />
               <span className="text-sm font-mono font-bold text-gray-200">20:26:45</span>
@@ -237,7 +267,7 @@ function App() {
               )}
             </div>
 
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-bold text-sm shadow-lg shadow-blue-600/20 text-white">
+            <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] transition-all rounded-xl font-bold text-sm shadow-lg shadow-blue-600/20 text-white w-full md:w-auto">
               <RefreshCcw className="w-4 h-4" />
               Refresh
             </button>
@@ -245,9 +275,13 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-8 py-8">
-        {/* KPI Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <main className="max-w-[1600px] mx-auto px-4 md:px-8 py-6 md:py-8">
+        {currentView === 'user' ? (
+          <UserDashboard />
+        ) : (
+          <>
+            {/* KPI Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <KPICard title="Active Crises" value={incidents.filter(i=>i.status==='ACTIVE').length} icon={ShieldAlert} color="danger" trend={{ direction: 'up', percent: 12, text: 'since last hour' }} />
           <KPICard title="Affected Population" value="5.2k" icon={Users} color="primary" trend={{ direction: 'down', percent: 3, text: 'recovery in progress' }} />
           <KPICard title="Avg Response Time" value="7.7s" icon={Timer} color="success" trend={{ direction: 'up', percent: 8, text: 'SLA optimization' }} />
@@ -267,7 +301,7 @@ function App() {
               { name: 'Verification', status: 'pending' },
             ]} />
 
-            <div className="bg-[#111827] border border-white/5 rounded-2xl p-6">
+            <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all duration-500">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-white">
                   <ShieldAlert className="w-5 h-5 text-blue-500" />
@@ -275,12 +309,12 @@ function App() {
                 </h3>
                 <span className="text-xs font-bold text-green-500 px-2.5 py-1 bg-green-500/10 rounded-lg animate-pulse">GPU-ACCELERATED LIVE VIEW</span>
               </div>
-              <div className="h-[450px] rounded-xl overflow-hidden border border-white/10 relative">
+              <div className="h-[350px] md:h-[450px] rounded-xl overflow-hidden border border-white/10 relative">
                 <CrisisMap incidents={incidents} />
               </div>
             </div>
 
-            <div className="bg-[#111827] border border-white/5 rounded-2xl p-6">
+            <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all duration-500">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-white">
                   <Activity className="w-5 h-5 text-blue-500" />
@@ -297,7 +331,7 @@ function App() {
                   </div>
                 </div>
               </div>
-              <div className="h-[300px]">
+              <div className="h-[250px] md:h-[300px]">
                 <Line data={chartData} options={chartOptions} />
               </div>
             </div>
@@ -305,7 +339,7 @@ function App() {
 
           {/* Right Column (Live List) */}
           <div className="lg:col-span-4 space-y-8">
-            <div className="bg-[#111827] border border-white/5 rounded-2xl p-6 flex flex-col h-full">
+            <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 flex flex-col h-full shadow-2xl hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all duration-500">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-white">Active Incidents</h3>
                 <span className="text-xs font-bold text-blue-500 px-2 py-1 bg-blue-500/10 rounded-lg">LIVE FEED</span>
@@ -342,7 +376,7 @@ function App() {
               </div>
             </div>
             
-            <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-6">
+            <div className="bg-blue-500/10 backdrop-blur-xl border border-blue-500/20 rounded-2xl p-6 shadow-[0_0_30px_rgba(37,99,235,0.1)] group hover:-translate-y-1 transition-all duration-300">
               <div className="flex items-start gap-4">
                 <div className="p-2 rounded-lg bg-blue-500/20">
                   <Info className="w-5 h-5 text-blue-500" />
@@ -357,6 +391,8 @@ function App() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </main>
     </div>
   );
