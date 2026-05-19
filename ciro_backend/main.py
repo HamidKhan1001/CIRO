@@ -249,6 +249,63 @@ async def get_clustered_incidents(
     return result
 
 
+class ChatRequest(BaseModel):
+    message: str
+    location: Optional[Dict[str, Any]] = None
+    context: Optional[str] = None
+
+@app.post("/chat")
+async def chat_with_ciro(request: ChatRequest):
+    """AI chat assistant for citizens and field responders."""
+    from utils.gemini_client import generate_json_response
+
+    system_prompt = """You are CIRO, a calm, professional Crisis Intelligence AI assistant embedded in an emergency response platform.
+Your role is to help citizens and field responders during urban crises: flooding, heatwaves, accidents, power outages, etc.
+
+Rules:
+- Be concise, reassuring, and action-oriented. Never panic the user.
+- If the user reports an emergency, acknowledge it clearly and provide immediate steps.
+- Always return valid JSON only. No markdown, no extra text.
+
+Output format (strict JSON):
+{
+  "response": "Your clear, helpful message to the user (1-3 sentences max)",
+  "suggestions": ["Short action 1", "Short action 2", "Short action 3"],
+  "severity": "safe | caution | danger",
+  "escalate": false
+}
+
+severity guide: safe=no immediate threat, caution=user should be alert, danger=active emergency detected.
+escalate=true only if the user is reporting an active life-threatening situation requiring immediate dispatch."""
+
+    location_ctx = ""
+    if request.location:
+        location_ctx = f"User GPS: lat={request.location.get('lat')}, lng={request.location.get('lng')}. "
+
+    context_ctx = f"Recent context: {request.context}. " if request.context else ""
+    prompt = f"{location_ctx}{context_ctx}User says: {request.message}"
+
+    try:
+        response_text = generate_json_response(prompt, system_prompt)
+        result = json.loads(response_text)
+    except json.JSONDecodeError:
+        result = {
+            "response": "I'm having trouble connecting to the AI. Please call emergency services directly if this is urgent.",
+            "suggestions": ["Call 15 (Police)", "Call 1122 (Ambulance)", "Call 16 (Fire)"],
+            "severity": "caution",
+            "escalate": False
+        }
+    except Exception as e:
+        result = {
+            "response": "CIRO AI is temporarily unavailable. Stay calm and contact your local emergency services.",
+            "suggestions": ["Call 15 (Police)", "Call 1122 (Ambulance)", "Move to higher ground if flooding"],
+            "severity": "caution",
+            "escalate": False
+        }
+
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

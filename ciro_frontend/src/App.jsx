@@ -6,6 +6,7 @@ import {
 import { api } from './services/api';
 import { CrisisMap } from './components/CrisisMap/CrisisMap';
 import { UserDashboard } from './components/UserDashboard/UserDashboard';
+import { CIROChat } from './components/CIROChat/CIROChat';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -394,6 +395,9 @@ function App() {
         </>
         )}
       </main>
+
+      {/* Global floating CIRO Chat — visible on both Admin & User views */}
+      {currentView === 'admin' && <CIROChat userPosition={null} />}
     </div>
   );
 }
