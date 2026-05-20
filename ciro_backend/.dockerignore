@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+database/ciro_cloud.db
+*.db
+.git/
+.gitignore
+*.md
+static/

@@ -4,7 +4,7 @@ import {
   ShieldAlert, AlertTriangle, CheckCircle2, Loader2, Zap, ChevronDown
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = (import.meta.env?.VITE_API_URL) || 'http://localhost:8000';
 
 const QUICK_ACTIONS = [
   { label: '🌊 Report Flooding', message: 'I see flooding in my area, what should I do?' },
