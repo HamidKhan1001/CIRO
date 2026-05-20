@@ -1,7 +1,12 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "ciro_cloud.db")
+# If running in a container (Cloud Run), write SQLite to /tmp which is fully writeable
+if os.path.exists("/.dockerenv") or os.environ.get("PORT"):
+    DB_PATH = "/tmp/ciro_cloud.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "ciro_cloud.db")
+
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)

@@ -3,3 +3,5 @@ uvicorn
 pydantic>=2.9.0
 google-genai>=0.2.0
 python-dotenv
+websockets>=14.0
+geohash2>=1.1
