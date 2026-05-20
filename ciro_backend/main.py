@@ -143,7 +143,8 @@ async def get_incidents():
     return incidents
 
 
-# Mount static files
+# Mount static files (create directory first to prevent startup crash if missing)
+os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.websocket("/ws/incidents/{user_id}/{role}")

@@ -9,4 +9,4 @@ database/ciro_cloud.db
 .git/
 .gitignore
 *.md
-static/
+
